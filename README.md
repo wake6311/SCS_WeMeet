@@ -23,6 +23,8 @@
   - 실행 제안
   - 균형
 - 본문 검색 결과 확인
+- Whisper 기반 음성 파일 STT
+- 전사 결과 JSON 초안 다운로드
 
 ## Project Structure
 
@@ -45,6 +47,8 @@ streamlit run app.py
 ```
 
 앱 실행 후 브라우저에서 Streamlit UI로 바로 확인할 수 있습니다.
+
+Whisper 전사를 쓰려면 시스템에 `ffmpeg`가 설치되어 있어야 합니다.
 
 ## Main Tabs
 
@@ -80,6 +84,18 @@ streamlit run app.py
 
 특정 표현이나 키워드가 포함된 발화를 현재 필터 범위 안에서 바로 찾을 수 있습니다.
 
+### 7. Whisper STT
+
+직무 인터뷰 음성 파일을 업로드하면 Whisper로 자동 전사합니다.
+
+- 지원 파일: `mp3`, `wav`, `m4a`, `mp4`, `webm` 등
+- 모델 선택 가능: `tiny`, `base`, `small`, `medium`
+- 언어 선택 가능: 자동 감지 / 한국어 / 영어
+- 결과 제공:
+  - 전체 전사 텍스트
+  - 세그먼트별 구간
+  - JSON 초안 다운로드
+
 ## Data Format
 
 각 인터뷰는 JSON 파일이며, 대략 아래 구조를 따릅니다.
@@ -114,3 +130,4 @@ streamlit run app.py
 - 추천 로직은 현재 규칙 기반입니다.
 - `persona_tags`, 전공, 본문 키워드, 발화 패턴을 함께 사용합니다.
 - 상담사 품질 분석도 규칙 기반 휴리스틱입니다. 절대적인 평가보다 비교/검토 용도로 보는 것이 적절합니다.
+- Whisper STT는 화자 분리(diarization)를 하지 않으므로, 생성되는 JSON 초안의 화자는 `U`(unknown)로 표기됩니다.

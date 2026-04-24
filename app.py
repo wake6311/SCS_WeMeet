@@ -1,253 +1,25 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
+from app_data import (
+    COMPETENCY_AXES,
+    COUNSELOR_MARKERS,
+    ROLE_CATALOG,
+    ROLE_FAMILY_ORDER,
+    WHISPER_FILE_TYPES,
+    WHISPER_LANGUAGE_MAP,
+    WHISPER_LANGUAGE_OPTIONS,
+    WHISPER_MODEL_OPTIONS,
+)
+
 
 DATA_DIR = Path(__file__).parent / "stt_samples"
-
-COMPETENCY_AXES = {
-    "분석형": {
-        "description": "패턴을 찾고 원인을 구조적으로 해석하는 성향",
-        "keywords": ["분석", "지표", "패턴", "원인", "해석", "비교", "데이터", "병목", "구조", "왜"],
-    },
-    "설득형": {
-        "description": "메시지를 다듬고 전달 효과를 높이는 성향",
-        "keywords": ["설득", "카피", "표현", "말투", "브랜드", "문장", "전달", "설명", "콘텐츠"],
-    },
-    "조율형": {
-        "description": "여러 사람과 관점을 연결하고 공통점을 찾는 성향",
-        "keywords": ["조율", "팀", "갈등", "공통", "협력", "중간", "의견", "합의", "정리"],
-    },
-    "실험형": {
-        "description": "가설을 세우고 직접 검증하며 개선하는 성향",
-        "keywords": ["실험", "검증", "가설", "조건", "바꿔", "측정", "테스트", "시도", "최적화"],
-    },
-}
-
-ROLE_CATALOG = {
-    "브랜드 콘텐츠": {
-        "family": "콘텐츠/마케팅",
-        "problem_focus": "브랜드 메시지와 반응 설계",
-        "work_mode": "콘텐츠 기획, 반응 분석, 카피 실험",
-        "fit_majors": ["영어영문학과", "국어국문학과", "언론정보학과"],
-        "keywords": ["브랜드", "카피", "콘텐츠", "인스타", "반응", "저장", "팔로워"],
-    },
-    "카피라이팅": {
-        "family": "콘텐츠/마케팅",
-        "problem_focus": "짧은 문장으로 설득과 전환 만들기",
-        "work_mode": "문장 실험, 브랜드 보이스 설계",
-        "fit_majors": ["영어영문학과", "국어국문학과"],
-        "keywords": ["카피", "문장", "단어", "브랜드 말투", "수사학", "표현"],
-    },
-    "콘텐츠 에디터": {
-        "family": "콘텐츠/마케팅",
-        "problem_focus": "콘텐츠 품질과 메시지 정합성 관리",
-        "work_mode": "편집, 피드백, 구조 정리",
-        "fit_majors": ["영어영문학과", "국어국문학과", "언론정보학과"],
-        "keywords": ["피드백", "수정", "글", "논리", "에디터"],
-    },
-    "콘텐츠 스트래티지": {
-        "family": "콘텐츠/마케팅",
-        "problem_focus": "브랜드 관점에서 콘텐츠 방향 설계",
-        "work_mode": "콘텐츠 기준 정의, 브랜드 톤 전략화",
-        "fit_majors": ["국어국문학과", "영어영문학과", "언론정보학과"],
-        "keywords": ["전략", "브랜드", "기준", "분석", "저장해두는"],
-    },
-    "데이터 엔지니어링": {
-        "family": "데이터/플랫폼",
-        "problem_focus": "데이터 흐름과 처리 인프라 설계",
-        "work_mode": "파이프라인 구축, 병목 최적화",
-        "fit_majors": ["컴퓨터공학과"],
-        "keywords": ["파이프라인", "Spark", "로그 데이터", "병목", "Kafka", "흐름"],
-    },
-    "MLOps": {
-        "family": "데이터/플랫폼",
-        "problem_focus": "모델 운영 자동화와 배포 안정화",
-        "work_mode": "데이터-모델-인프라 연결",
-        "fit_majors": ["컴퓨터공학과"],
-        "keywords": ["모델", "배포", "모니터링", "자동화", "인프라", "MLOps"],
-    },
-    "파이프라인": {
-        "family": "데이터/플랫폼",
-        "problem_focus": "대규모 데이터 처리 구조 설계",
-        "work_mode": "ETL, 배치, 스트리밍 설계",
-        "fit_majors": ["컴퓨터공학과"],
-        "keywords": ["파이프라인", "데이터 흐름", "처리", "최적화", "구조"],
-    },
-    "운영 최적화": {
-        "family": "산업/운영",
-        "problem_focus": "병목 제거와 효율 향상",
-        "work_mode": "시뮬레이션, 대기열 분석, 운영 개선",
-        "fit_majors": ["산업공학과"],
-        "keywords": ["병목", "대기열", "운영", "효율", "시뮬레이션", "흐름"],
-    },
-    "프로덕트 데이터 분석": {
-        "family": "데이터/제품",
-        "problem_focus": "사용자 행동 데이터로 제품 의사결정 지원",
-        "work_mode": "지표 설계, 퍼널 분석, 실험 해석",
-        "fit_majors": ["산업공학과", "경제학부", "컴퓨터공학과"],
-        "keywords": ["데이터", "지표", "사용자", "흐름", "실험", "분석"],
-    },
-    "실험 설계": {
-        "family": "데이터/제품",
-        "problem_focus": "가설 검증을 위한 테스트 구조 설계",
-        "work_mode": "가설 분해, 검증 조건 설계",
-        "fit_majors": ["산업공학과", "심리학과", "경제학부"],
-        "keywords": ["가설", "검증", "실험", "조건", "데이터부터 보자"],
-    },
-    "반도체 공정": {
-        "family": "R&D/제조",
-        "problem_focus": "공정 조건 최적화와 수율 개선",
-        "work_mode": "공정 개발, 이상 원인 분석, 조건 조정",
-        "fit_majors": ["물리천문학부", "재료공학부", "전기정보공학부"],
-        "keywords": ["반도체", "공정", "측정", "노이즈", "장비", "조건"],
-    },
-    "광학 센서": {
-        "family": "R&D/하드웨어",
-        "problem_focus": "광학·이미지 센서 성능 향상",
-        "work_mode": "계측, 센서 평가, 신호 분석",
-        "fit_majors": ["물리천문학부", "전기정보공학부"],
-        "keywords": ["센서", "광학", "이미지", "노이즈", "신호", "측정값"],
-    },
-    "R&D 엔지니어": {
-        "family": "R&D/하드웨어",
-        "problem_focus": "실험 기반 문제 해결과 제품 개선",
-        "work_mode": "원인 분석, 실험 반복, 기술 검증",
-        "fit_majors": ["물리천문학부", "환경공학부", "컴퓨터공학과"],
-        "keywords": ["실험", "원인", "데이터", "장비", "연구", "검증"],
-    },
-    "데이터 저널리즘": {
-        "family": "미디어/데이터",
-        "problem_focus": "데이터로 사회 이슈를 해석해 전달",
-        "work_mode": "데이터 분석, 시각화, 기사 구성",
-        "fit_majors": ["언론정보학과", "사회학과", "경제학부"],
-        "keywords": ["기사", "데이터", "시각화", "투표율", "패턴", "인포그래픽"],
-    },
-    "마케팅 인사이트": {
-        "family": "마케팅/분석",
-        "problem_focus": "소비자 행동과 반응 해석",
-        "work_mode": "캠페인 해석, 행동 인사이트 도출",
-        "fit_majors": ["언론정보학과", "경영학과", "경제학부"],
-        "keywords": ["반응", "읽혔", "시각화", "소비자", "인사이트", "마케팅"],
-    },
-    "B2B 콘텐츠": {
-        "family": "콘텐츠/마케팅",
-        "problem_focus": "전문 정보를 설득력 있는 콘텐츠로 번역",
-        "work_mode": "리포트, 사례, 정보 구조화",
-        "fit_majors": ["언론정보학과", "영어영문학과", "국어국문학과"],
-        "keywords": ["리포트", "스토리", "기사", "콘텐츠", "설명"],
-    },
-    "UX 리서치": {
-        "family": "리서치/제품",
-        "problem_focus": "사용자 문제 발견과 행동 이유 탐색",
-        "work_mode": "인터뷰, 관찰, 인사이트 정리",
-        "fit_majors": ["심리학과"],
-        "keywords": ["인터뷰", "사용자", "질문", "이유", "행동", "설문"],
-    },
-    "HR테크": {
-        "family": "HR/테크",
-        "problem_focus": "채용과 평가 시스템의 공정성·효율성 개선",
-        "work_mode": "채용 데이터, 편향 검토, 시스템 설계",
-        "fit_majors": ["심리학과", "컴퓨터공학과"],
-        "keywords": ["채용", "편향", "공정", "AI 면접", "HR테크"],
-    },
-    "조직개발": {
-        "family": "HR/조직",
-        "problem_focus": "팀 문화와 협업 구조 개선",
-        "work_mode": "조직 진단, 갈등 해석, 문화 개선",
-        "fit_majors": ["심리학과", "경영학과"],
-        "keywords": ["조직", "팀", "갈등", "문화", "심리적 안전감"],
-    },
-    "핀테크": {
-        "family": "금융/데이터",
-        "problem_focus": "금융 문제를 데이터와 제품으로 해결",
-        "work_mode": "리스크 분석, 지표 해석, 서비스 개선",
-        "fit_majors": ["경제학부", "컴퓨터공학과"],
-        "keywords": ["금융", "핀테크", "리스크", "대출", "고객", "토스"],
-    },
-    "데이터 애널리스트": {
-        "family": "데이터/분석",
-        "problem_focus": "데이터를 의사결정 언어로 해석",
-        "work_mode": "모델 해석, 비즈니스 지표 분석",
-        "fit_majors": ["경제학부", "산업공학과", "경영학과"],
-        "keywords": ["계수", "해석", "분석", "비즈니스", "지표", "SQL"],
-    },
-    "퀀트 리서치": {
-        "family": "금융/정량",
-        "problem_focus": "금융 모델과 변수 해석",
-        "work_mode": "정량 모델링, 수익률 분석",
-        "fit_majors": ["경제학부", "수리과학부", "통계학과"],
-        "keywords": ["수익률", "모델", "회귀분석", "변수", "계수", "예측"],
-    },
-    "기후테크": {
-        "family": "환경/기술",
-        "problem_focus": "기술 기반 탄소 감축과 운영 개선",
-        "work_mode": "배출 저감, 에너지 최적화, 공정 개선",
-        "fit_majors": ["환경공학부"],
-        "keywords": ["기후", "감축", "배출", "에너지", "운영 조건", "최적화"],
-    },
-    "탄소관리": {
-        "family": "환경/데이터",
-        "problem_focus": "배출량 측정과 감축 포인트 분석",
-        "work_mode": "배출 데이터 분석, 보고, 감축 전략 수립",
-        "fit_majors": ["환경공학부"],
-        "keywords": ["탄소", "배출량", "계측", "에너지 사용량", "감축", "데이터"],
-    },
-    "자원순환": {
-        "family": "환경/공정",
-        "problem_focus": "폐기물·배터리 재활용 공정 개선",
-        "work_mode": "공정 이해, 처리 효율 개선, 안정화",
-        "fit_majors": ["환경공학부", "화학생물공학부"],
-        "keywords": ["재활용", "폐배터리", "자원순환", "공정", "처리"],
-    },
-    "공공정책": {
-        "family": "정책/대외협력",
-        "problem_focus": "정책 변화 해석과 대응 전략 수립",
-        "work_mode": "규제 분석, 입법 모니터링, 대외 커뮤니케이션",
-        "fit_majors": ["정치외교학부", "행정학과"],
-        "keywords": ["정책", "규제", "기업 공공정책팀", "정부", "입법"],
-    },
-    "디지털 거버넌스": {
-        "family": "정책/기술",
-        "problem_focus": "기술 규제와 국제 조율 이해",
-        "work_mode": "거버넌스 분석, 국제 규제 비교",
-        "fit_majors": ["정치외교학부", "컴퓨터공학과"],
-        "keywords": ["AI 거버넌스", "EU AI Act", "규제", "국제", "디지털"],
-    },
-    "글로벌 BD": {
-        "family": "사업개발/대외협력",
-        "problem_focus": "이해관계자 조율과 파트너십 개발",
-        "work_mode": "협상, 공통 언어 찾기, 파트너십 기획",
-        "fit_majors": ["정치외교학부", "경영학과"],
-        "keywords": ["합의안", "이해관계자", "공통 언어", "파트너십", "글로벌"],
-    },
-}
-
-ROLE_FAMILY_ORDER = [
-    "콘텐츠/마케팅",
-    "데이터/플랫폼",
-    "데이터/제품",
-    "산업/운영",
-    "R&D/제조",
-    "R&D/하드웨어",
-    "미디어/데이터",
-    "마케팅/분석",
-    "리서치/제품",
-    "HR/테크",
-    "HR/조직",
-    "금융/데이터",
-    "금융/정량",
-    "환경/기술",
-    "환경/데이터",
-    "환경/공정",
-    "정책/대외협력",
-    "정책/기술",
-    "사업개발/대외협력",
-]
 
 
 @st.cache_data
@@ -406,10 +178,10 @@ def analyze_counselor_quality(interview: dict) -> dict:
         utterance["text"] for utterance in interview["utterances"] if utterance["speaker"] == "C"
     ]
 
-    open_question_markers = ["어떤", "어떻게", "왜", "언제", "무엇", "어디", "누구", "먼저", "계기"]
-    validation_markers = ["이해해요", "그럴 수", "괜찮", "위안", "맞아요", "충분히", "그럴 것 같", "고생"]
-    summary_markers = ["정리", "들어보니", "보면", "말한 것", "말씀하신", "즉", "그러니까"]
-    action_markers = ["해보세요", "정리해보세요", "찾아보세요", "익혀두", "포트폴리오", "다음", "써보세요"]
+    open_question_markers = COUNSELOR_MARKERS["탐색 질문"]
+    validation_markers = COUNSELOR_MARKERS["공감/지지"]
+    summary_markers = COUNSELOR_MARKERS["구조화/정리"]
+    action_markers = COUNSELOR_MARKERS["실행 제안"]
 
     open_question_count = 0
     validation_count = 0
@@ -451,13 +223,7 @@ def analyze_counselor_quality(interview: dict) -> dict:
 
 
 def find_counselor_examples(interview: dict, category: str, limit: int = 3) -> list[str]:
-    markers_by_category = {
-        "탐색 질문": ["어떤", "어떻게", "왜", "언제", "무엇", "계기"],
-        "공감/지지": ["이해해요", "그럴 수", "괜찮", "위안", "맞아요", "고생"],
-        "구조화/정리": ["정리", "들어보니", "보면", "말한 것", "즉", "그러니까"],
-        "실행 제안": ["해보세요", "정리해보세요", "찾아보세요", "익혀두", "포트폴리오", "써보세요"],
-    }
-    markers = markers_by_category[category]
+    markers = COUNSELOR_MARKERS[category]
     examples = []
     for utterance in interview["utterances"]:
         if utterance["speaker"] != "C":
@@ -566,6 +332,13 @@ def render_page_style() -> None:
             line-height: 1.6;
             margin: 0;
         }
+        .stt-summary {
+            background: linear-gradient(135deg, rgba(217, 231, 242, 0.45) 0%, rgba(255,255,255,0.92) 100%);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 1rem 1.1rem;
+            margin-bottom: 0.9rem;
+        }
         div[data-testid="stMetric"] {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -655,6 +428,80 @@ def render_page_style() -> None:
     )
 
 
+def seconds_to_timestamp(seconds: float) -> str:
+    total = max(0, int(seconds))
+    hours = total // 3600
+    minutes = (total % 3600) // 60
+    secs = total % 60
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+@st.cache_resource
+def load_whisper_model(model_name: str):
+    try:
+        import whisper  # type: ignore
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("`openai-whisper` 패키지가 설치되어 있지 않습니다.") from exc
+
+    return whisper.load_model(model_name)
+
+
+def transcribe_uploaded_audio(uploaded_file, model_name: str, language: str | None) -> dict:
+    suffix = Path(uploaded_file.name).suffix or ".wav"
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+            temp_file.write(uploaded_file.getbuffer())
+            temp_path = Path(temp_file.name)
+
+        model = load_whisper_model(model_name)
+        transcribe_kwargs = {"task": "transcribe"}
+        if language:
+            transcribe_kwargs["language"] = language
+
+        result = model.transcribe(str(temp_path), **transcribe_kwargs)
+        segments = result.get("segments", [])
+        rows = []
+        for index, segment in enumerate(segments, start=1):
+            rows.append(
+                {
+                    "segment_id": index,
+                    "start": seconds_to_timestamp(float(segment["start"])),
+                    "end": seconds_to_timestamp(float(segment["end"])),
+                    "text": segment["text"].strip(),
+                }
+            )
+
+        draft = {
+            "interview_id": "UPLOAD-DRAFT",
+            "metadata": {
+                "source_file": uploaded_file.name,
+                "model": model_name,
+                "language": language or "auto",
+                "total_utterances": len(rows),
+            },
+            "utterances": [
+                {
+                    "id": f"UTT-{idx:03d}",
+                    "speaker": "U",
+                    "start": row["start"],
+                    "end": row["end"],
+                    "text": row["text"],
+                }
+                for idx, row in enumerate(rows, start=1)
+            ],
+        }
+
+        return {
+            "text": result.get("text", "").strip(),
+            "segments_df": pd.DataFrame(rows),
+            "draft_json": draft,
+        }
+    finally:
+        if temp_path and temp_path.exists():
+            temp_path.unlink()
+
+
 def main() -> None:
     st.set_page_config(page_title="WE Meet STT Viewer", layout="wide")
     render_page_style()
@@ -741,8 +588,8 @@ def main() -> None:
     )
     metric_col4.metric("직무 후보 수", filtered_analysis_df["role"].nunique() if not filtered_analysis_df.empty else 0)
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-        ["목록", "대화 보기", "추천 구조", "직무 추천 분석", "상담사 코멘트 분석", "본문 검색 결과"]
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+        ["목록", "대화 보기", "추천 구조", "직무 추천 분석", "상담사 코멘트 분석", "본문 검색 결과", "Whisper STT"]
     )
 
     with tab1:
@@ -951,6 +798,83 @@ def main() -> None:
             st.dataframe(result_df, width="stretch", hide_index=True)
         else:
             st.info("검색어를 입력하면 현재 필터 범위 안에서 발화 단위 결과를 볼 수 있습니다.")
+
+    with tab7:
+        st.subheader("Whisper STT")
+        st.caption("직무 인터뷰 음성 파일을 업로드하면 Whisper로 자동 전사하고, 텍스트와 JSON 초안을 바로 확인합니다.")
+
+        config_col1, config_col2 = st.columns(2)
+        with config_col1:
+            whisper_model = st.selectbox("Whisper 모델", options=WHISPER_MODEL_OPTIONS, index=1, help="작을수록 빠르고, 클수록 정확도가 높지만 더 느립니다.")
+        with config_col2:
+            language_label = st.selectbox("언어", options=WHISPER_LANGUAGE_OPTIONS, index=1)
+        selected_language = WHISPER_LANGUAGE_MAP[language_label]
+
+        uploaded_audio = st.file_uploader(
+            "음성 파일 업로드",
+            type=WHISPER_FILE_TYPES,
+            help="파일을 올리면 자동으로 전사가 시작됩니다.",
+        )
+
+        if uploaded_audio is not None:
+            st.audio(uploaded_audio)
+            st.markdown(
+                f"""
+                <div class="stt-summary">
+                    <strong>업로드 파일</strong>: {uploaded_audio.name}<br/>
+                    <strong>선택 모델</strong>: {whisper_model}<br/>
+                    <strong>전사 언어</strong>: {language_label}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            try:
+                with st.spinner("Whisper로 음성을 전사하는 중입니다..."):
+                    transcription = transcribe_uploaded_audio(
+                        uploaded_audio,
+                        whisper_model,
+                        selected_language,
+                    )
+            except Exception as exc:
+                st.error(
+                    "Whisper 전사에 실패했습니다. `openai-whisper` 설치와 `ffmpeg` 사용 가능 여부를 확인해주세요."
+                )
+                st.exception(exc)
+            else:
+                st.success("전사가 완료되었습니다.")
+
+                transcript_col1, transcript_col2 = st.columns([1.3, 1])
+                with transcript_col1:
+                    st.subheader("전사 텍스트")
+                    st.text_area(
+                        "full_transcript",
+                        value=transcription["text"],
+                        height=280,
+                        label_visibility="collapsed",
+                    )
+                    st.download_button(
+                        "텍스트 다운로드",
+                        data=transcription["text"],
+                        file_name=f"{Path(uploaded_audio.name).stem}_transcript.txt",
+                        mime="text/plain",
+                    )
+
+                with transcript_col2:
+                    st.subheader("세그먼트")
+                    st.dataframe(transcription["segments_df"], width="stretch", hide_index=True)
+
+                st.subheader("JSON 초안")
+                json_text = json.dumps(transcription["draft_json"], ensure_ascii=False, indent=2)
+                st.code(json_text, language="json")
+                st.download_button(
+                    "JSON 초안 다운로드",
+                    data=json_text,
+                    file_name=f"{Path(uploaded_audio.name).stem}_draft.json",
+                    mime="application/json",
+                )
+        else:
+            st.info("음성 파일을 올리면 이 탭 안에서 자동으로 Whisper STT가 실행됩니다.")
 
 
 if __name__ == "__main__":
