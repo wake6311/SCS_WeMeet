@@ -52,6 +52,9 @@ def build_summary_rows(interviews: list[dict]) -> list[dict]:
     return rows
 
 
+SPEAKER_CODE_TO_LABEL = {"C": "상담사", "A": "학생"}
+
+
 def build_utterance_rows(interviews: list[dict]) -> list[dict]:
     rows = []
     for interview in interviews:
@@ -62,7 +65,7 @@ def build_utterance_rows(interviews: list[dict]) -> list[dict]:
                     "interview_id": interview["interview_id"],
                     "client_name": client["name"],
                     "major": client["major"],
-                    "speaker": "상담사" if utterance["speaker"] == "C" else "학생",
+                    "speaker": SPEAKER_CODE_TO_LABEL.get(utterance["speaker"], "미분류"),
                     "speaker_code": utterance["speaker"],
                     "text": utterance["text"],
                     "start": utterance["start"],
@@ -237,23 +240,29 @@ def find_supporting_utterances(interview: dict, role: str, limit: int = 3) -> li
     keywords = ROLE_CATALOG[role]["keywords"]
     matches = []
     for utterance in interview["utterances"]:
+        if utterance["speaker"] != "A":
+            continue
         match_count = sum(1 for keyword in keywords if keyword in utterance["text"])
         if match_count > 0:
             matches.append(
                 {
-                    "speaker": "상담사" if utterance["speaker"] == "C" else "학생",
+                    "speaker": "학생",
                     "text": utterance["text"],
                     "weight": match_count,
                 }
             )
-    matches.sort(key=lambda row: (-row["weight"], row["speaker"]))
+    matches.sort(key=lambda row: (-row["weight"], row["text"]))
     return matches[:limit]
+
+
+SPEAKER_LABELS = {"C": ("상담사", "speaker-c"), "A": ("학생", "speaker-a")}
 
 
 def render_transcript(interview: dict) -> None:
     for utterance in interview["utterances"]:
-        speaker = "상담사" if utterance["speaker"] == "C" else "학생"
-        speaker_class = "speaker-c" if utterance["speaker"] == "C" else "speaker-a"
+        speaker, speaker_class = SPEAKER_LABELS.get(
+            utterance["speaker"], ("미분류", "speaker-other")
+        )
         with st.container(border=True):
             st.markdown(
                 f"""
@@ -305,6 +314,12 @@ def render_page_style() -> None:
             border-radius: 20px;
             padding: 1.3rem 1.4rem 1.1rem 1.4rem;
             box-shadow: 0 10px 30px rgba(31, 41, 55, 0.06);
+            margin-bottom: 1.25rem;
+        }
+        div[data-testid="stExpander"] {
+            margin-bottom: 0.9rem;
+        }
+        div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stMetric"]) {
             margin-bottom: 1rem;
         }
         .hero-eyebrow {
@@ -359,12 +374,18 @@ def render_page_style() -> None:
             overflow: hidden;
             background: var(--surface-strong);
         }
+        div[data-testid="stTabs"] {
+            margin-top: 0.4rem;
+        }
         div[data-testid="stTabs"] button {
             border-radius: 999px;
             color: var(--muted);
             border: 1px solid transparent;
             background: transparent;
-            padding: 0.45rem 0.9rem;
+            padding: 0.4rem 0.85rem;
+            height: auto;
+            min-height: 0;
+            white-space: nowrap;
         }
         div[data-testid="stTabs"] button[aria-selected="true"] {
             color: var(--accent-strong);
@@ -372,11 +393,20 @@ def render_page_style() -> None:
             border-color: var(--border);
         }
         div[data-testid="stTabs"] [data-baseweb="tab-list"] {
-            gap: 0.4rem;
+            gap: 0.35rem;
             background: rgba(255,255,255,0.4);
             padding: 0.35rem;
-            border-radius: 999px;
+            border-radius: 18px;
             border: 1px solid rgba(221, 214, 200, 0.9);
+            flex-wrap: wrap;
+            row-gap: 0.35rem;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-list"] [data-baseweb="tab-highlight"],
+        div[data-testid="stTabs"] [data-baseweb="tab-list"] [data-baseweb="tab-border"] {
+            display: none;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-panel"] {
+            padding-top: 1rem;
         }
         div[data-testid="stSelectbox"] > div,
         div[data-testid="stMultiSelect"] > div,
@@ -386,8 +416,9 @@ def render_page_style() -> None:
         .transcript-head {
             display: flex;
             align-items: center;
-            gap: 0.55rem;
-            margin-bottom: 0.35rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.55rem;
         }
         .speaker-chip,
         .time-chip {
@@ -405,6 +436,10 @@ def render_page_style() -> None:
         .speaker-a {
             background: var(--student-soft);
             color: var(--student);
+        }
+        .speaker-other {
+            background: #ece7dc;
+            color: var(--muted);
         }
         .time-chip {
             background: #f4efe7;
@@ -498,8 +533,11 @@ def transcribe_uploaded_audio(uploaded_file, model_name: str, language: str | No
             "draft_json": draft,
         }
     finally:
-        if temp_path and temp_path.exists():
-            temp_path.unlink()
+        if temp_path is not None:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def main() -> None:
@@ -529,7 +567,14 @@ def main() -> None:
 
     summary_df = pd.DataFrame(build_summary_rows(interviews))
     utterance_df = pd.DataFrame(build_utterance_rows(interviews))
-    framework_df = pd.DataFrame(build_framework_rows()).sort_values(["family", "role"])
+    framework_df = pd.DataFrame(build_framework_rows())
+    family_categories = ROLE_FAMILY_ORDER + sorted(
+        set(framework_df["family"]) - set(ROLE_FAMILY_ORDER)
+    )
+    framework_df["family"] = pd.Categorical(
+        framework_df["family"], categories=family_categories, ordered=True
+    )
+    framework_df = framework_df.sort_values(["family", "role"]).reset_index(drop=True)
 
     analysis_rows = []
     for interview in interviews:
@@ -551,7 +596,7 @@ def main() -> None:
 
     with st.expander("필터", expanded=False):
         st.markdown(
-            "<div class='section-note'>전체 탭에 공통으로 적용되는 기본 필터입니다.</div>",
+            "<div class='section-note'>전체 탭에 공통으로 적용되는 기본 필터입니다. 전공을 모두 해제하면 결과가 비어 표시됩니다.</div>",
             unsafe_allow_html=True,
         )
         filter_col1, filter_col2 = st.columns(2)
@@ -560,15 +605,19 @@ def main() -> None:
         with filter_col2:
             selected_tags = st.multiselect("태그", options=all_tags)
 
+        if not selected_majors:
+            st.caption("전공이 선택되어 있지 않아 모든 탭의 결과가 비어 있게 됩니다.")
+
     filtered_ids = set(
         summary_df.loc[summary_df["major"].isin(selected_majors), "interview_id"].tolist()
     )
 
     if selected_tags:
+        selected_tag_set = set(selected_tags)
         tag_ids = {
             row["interview_id"]
             for _, row in summary_df.iterrows()
-            if any(tag in row["tags"] for tag in selected_tags)
+            if selected_tag_set & {tag.strip() for tag in row["tags"].split(",") if tag.strip()}
         }
         filtered_ids &= tag_ids
 
