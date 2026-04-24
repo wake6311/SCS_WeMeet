@@ -252,6 +252,140 @@ COUNSELOR_MARKERS = {
 }
 
 
+SUMMARY_COLUMN_DICT = [
+    {
+        "컬럼": "interview_id",
+        "한글명": "인터뷰 ID",
+        "의미": "인터뷰 한 건을 고유하게 식별하는 기본키",
+        "데이터 타입": "문자열 (예: INT-001)",
+        "예시": "INT-001",
+        "원본 경로": "interview_id",
+    },
+    {
+        "컬럼": "session_date",
+        "한글명": "상담일",
+        "의미": "상담이 진행된 날짜",
+        "데이터 타입": "문자열(YYYY-MM-DD) → 날짜형으로 변환 가능",
+        "예시": "2026-03-18",
+        "원본 경로": "metadata.session_date",
+    },
+    {
+        "컬럼": "client_name",
+        "한글명": "학생 이름",
+        "의미": "상담을 받은 학생 이름",
+        "데이터 타입": "문자열",
+        "예시": "김나은",
+        "원본 경로": "metadata.client.name",
+    },
+    {
+        "컬럼": "major",
+        "한글명": "전공",
+        "의미": "학생의 학부 전공",
+        "데이터 타입": "문자열 (카테고리)",
+        "예시": "영어영문학과",
+        "원본 경로": "metadata.client.major",
+    },
+    {
+        "컬럼": "grade",
+        "한글명": "학년",
+        "의미": "학생의 학년",
+        "데이터 타입": "정수 (1~4)",
+        "예시": "3",
+        "원본 경로": "metadata.client.grade",
+    },
+    {
+        "컬럼": "tags",
+        "한글명": "관심 직무 태그",
+        "의미": "학생이 관심 있다고 언급한 직무 태그 목록 (쉼표로 연결)",
+        "데이터 타입": "문자열 (원본은 리스트)",
+        "예시": "브랜드 콘텐츠, 카피라이팅",
+        "원본 경로": "metadata.client.persona_tags[]",
+    },
+    {
+        "컬럼": "duration",
+        "한글명": "상담 시간",
+        "의미": "상담이 진행된 총 시간",
+        "데이터 타입": "문자열(HH:MM:SS)",
+        "예시": "00:20:51",
+        "원본 경로": "metadata.duration",
+    },
+    {
+        "컬럼": "utterance_count",
+        "한글명": "발화 수",
+        "의미": "해당 인터뷰에서 기록된 발화의 총 개수",
+        "데이터 타입": "정수",
+        "예시": "52",
+        "원본 경로": "len(utterances)",
+    },
+]
+
+
+RELATIONAL_SCHEMA = [
+    {
+        "name": "Interview",
+        "description": "인터뷰(상담) 한 건을 대표하는 테이블. 나머지 테이블들이 이 ID를 참조한다.",
+        "columns": [
+            ("interview_id", "문자열", "PK", "인터뷰 고유 식별자"),
+            ("session_date", "날짜", "", "상담 일자"),
+            ("start_time", "시간", "", "상담 시작 시각"),
+            ("duration", "문자열(HH:MM:SS)", "", "상담 지속 시간"),
+            ("counselor_id", "문자열", "FK → Counselor", "담당 상담사 참조"),
+            ("client_id", "문자열", "FK → Client", "상담 학생 참조"),
+        ],
+    },
+    {
+        "name": "Client",
+        "description": "상담을 받은 학생의 프로필. 인터뷰마다 서로 다른 학생이 등장한다.",
+        "columns": [
+            ("client_id", "문자열", "PK", "학생 고유 식별자"),
+            ("name", "문자열", "", "학생 이름"),
+            ("age", "정수", "", "나이"),
+            ("university", "문자열", "", "소속 대학"),
+            ("major", "문자열", "", "전공"),
+            ("grade", "정수", "", "학년"),
+        ],
+    },
+    {
+        "name": "Counselor",
+        "description": "상담을 진행한 상담사 정보.",
+        "columns": [
+            ("counselor_id", "문자열", "PK", "상담사 고유 식별자"),
+            ("name", "문자열", "", "상담사 이름"),
+            ("role", "문자열", "", "직무상담사 등의 역할명"),
+        ],
+    },
+    {
+        "name": "PersonaTag",
+        "description": "학생이 관심 있다고 말한 직무 태그. 한 학생에 여러 태그가 붙을 수 있어 별도 테이블로 분리한다. (N:M 관계)",
+        "columns": [
+            ("client_id", "문자열", "PK, FK → Client", "학생 참조"),
+            ("tag", "문자열", "PK", "직무 태그명 (예: 브랜드 콘텐츠)"),
+        ],
+    },
+    {
+        "name": "Utterance",
+        "description": "상담 중 한 사람이 한 번에 말한 발화 단위. 인터뷰 한 건에 여러 행이 달린다. (1:N 관계)",
+        "columns": [
+            ("utterance_id", "문자열", "PK", "발화 고유 식별자 (예: UTT-001)"),
+            ("interview_id", "문자열", "FK → Interview", "소속 인터뷰"),
+            ("speaker", "문자열(A/C)", "", "화자 구분 — A=학생, C=상담사"),
+            ("start", "시간", "", "발화 시작 시각"),
+            ("end", "시간", "", "발화 종료 시각"),
+            ("confidence", "실수(0~1)", "", "STT 신뢰도 점수"),
+            ("text", "문자열(긴 텍스트)", "", "발화 내용"),
+        ],
+    },
+]
+
+
+RELATIONAL_EDGES = [
+    ("Interview", "Client", "N:1", "한 학생이 여러 번 상담받을 수 있음"),
+    ("Interview", "Counselor", "N:1", "한 상담사가 여러 인터뷰를 진행"),
+    ("Interview", "Utterance", "1:N", "인터뷰 한 건은 여러 발화로 구성"),
+    ("Client", "PersonaTag", "1:N", "학생 한 명에 여러 관심 태그"),
+]
+
+
 WHISPER_MODEL_OPTIONS = ["tiny", "base", "small", "medium"]
 WHISPER_LANGUAGE_OPTIONS = ["자동 감지", "한국어", "영어"]
 WHISPER_LANGUAGE_MAP = {"자동 감지": None, "한국어": "ko", "영어": "en"}

@@ -10,8 +10,11 @@ import streamlit as st
 from app_data import (
     COMPETENCY_AXES,
     COUNSELOR_MARKERS,
+    RELATIONAL_EDGES,
+    RELATIONAL_SCHEMA,
     ROLE_CATALOG,
     ROLE_FAMILY_ORDER,
+    SUMMARY_COLUMN_DICT,
     WHISPER_FILE_TYPES,
     WHISPER_LANGUAGE_MAP,
     WHISPER_LANGUAGE_OPTIONS,
@@ -256,6 +259,115 @@ def find_supporting_utterances(interview: dict, role: str, limit: int = 3) -> li
 
 
 SPEAKER_LABELS = {"C": ("상담사", "speaker-c"), "A": ("학생", "speaker-a")}
+
+
+def infer_dtype_label(series: pd.Series) -> str:
+    dtype = str(series.dtype)
+    mapping = {
+        "object": "문자열 (object)",
+        "int64": "정수 (int64)",
+        "float64": "실수 (float64)",
+        "bool": "불리언 (bool)",
+        "datetime64[ns]": "날짜/시간 (datetime64)",
+    }
+    return mapping.get(dtype, dtype)
+
+
+def render_summary_column_dictionary(summary_df: pd.DataFrame) -> None:
+    st.markdown("#### 1단계 — 지금 표의 컬럼이 무엇인지 이해하기")
+    st.caption(
+        "위 표의 각 열(column)이 어떤 필드이고, 어떤 타입이며, 원본 JSON의 어디에서 왔는지 정리한 '컬럼 사전'입니다."
+    )
+
+    actual_dtypes = {col: infer_dtype_label(summary_df[col]) for col in summary_df.columns}
+    rows = []
+    for entry in SUMMARY_COLUMN_DICT:
+        rows.append(
+            {
+                "컬럼 (영문)": entry["컬럼"],
+                "한글명": entry["한글명"],
+                "의미": entry["의미"],
+                "정의된 타입": entry["데이터 타입"],
+                "실제 pandas 타입": actual_dtypes.get(entry["컬럼"], "-"),
+                "예시 값": entry["예시"],
+                "원본 JSON 경로": entry["원본 경로"],
+            }
+        )
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+
+    st.caption(
+        "※ '정의된 타입'은 우리가 의도한 타입이고, '실제 pandas 타입'은 현재 DataFrame이 추론한 타입입니다. "
+        "두 값이 다르면 타입 변환(캐스팅)이 필요할 수 있다는 신호입니다."
+    )
+
+
+def render_relational_schema() -> None:
+    st.markdown("#### 2단계 — 원본 JSON을 관계형 테이블로 나누면?")
+    st.markdown(
+        """
+        지금 보는 표는 인터뷰 한 건을 한 줄로 요약한 모습입니다. 하지만 원본 데이터에는
+        학생 프로필, 상담사, 발화 내용 같은 서로 다른 종류의 정보가 한 JSON 안에 섞여 있습니다.
+        데이터베이스에서는 보통 이런 정보를 **종류별로 다른 테이블**로 나눠 저장하고, 각 테이블을
+        **키(key)**로 연결합니다.
+        """
+    )
+
+    for table in RELATIONAL_SCHEMA:
+        with st.expander(f"📋 {table['name']} 테이블", expanded=False):
+            st.write(table["description"])
+            table_rows = [
+                {
+                    "필드": col[0],
+                    "데이터 타입": col[1],
+                    "키": col[2] or "-",
+                    "설명": col[3],
+                }
+                for col in table["columns"]
+            ]
+            st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
+
+    st.markdown("**용어 정리**")
+    st.markdown(
+        """
+        - **PK (Primary Key, 기본키)**: 해당 테이블의 각 행을 유일하게 식별하는 필드
+        - **FK (Foreign Key, 외래키)**: 다른 테이블의 기본키를 가리키는 필드. 테이블 간 연결 고리
+        - **1:N 관계**: 한 행이 다른 테이블의 여러 행과 연결되는 구조 (예: 인터뷰 1건 ↔ 발화 여러 개)
+        - **N:M 관계**: 양쪽 모두 여러 개로 연결될 수 있는 구조. 보통 중간 테이블로 풀어낸다
+        """
+    )
+
+
+def render_erd_diagram() -> None:
+    st.markdown("#### 3단계 — 테이블 사이의 관계를 그림으로")
+    st.caption("화살표는 '참조하는 방향'입니다. 예: Interview → Client 는 Interview가 Client를 참조.")
+
+    lines = [
+        "digraph ERD {",
+        '  rankdir=LR;',
+        '  bgcolor="transparent";',
+        '  node [shape=box, style="rounded,filled", fillcolor="#ffffff", '
+        'color="#1f4b6e", fontname="Helvetica", fontcolor="#17354d"];',
+        '  edge [color="#8b5e34", fontname="Helvetica", fontcolor="#8b5e34", fontsize=10];',
+    ]
+    for table in RELATIONAL_SCHEMA:
+        pk_fields = ", ".join(col[0] for col in table["columns"] if "PK" in col[2])
+        label = f"{table['name']}\\nPK: {pk_fields}" if pk_fields else table["name"]
+        lines.append(f'  {table["name"]} [label="{label}"];')
+
+    for src, dst, cardinality, note in RELATIONAL_EDGES:
+        lines.append(f'  {src} -> {dst} [label="{cardinality}"];')
+    lines.append("}")
+
+    st.graphviz_chart("\n".join(lines))
+
+    st.markdown("**관계 요약**")
+    edge_df = pd.DataFrame(
+        [
+            {"From": src, "To": dst, "관계": cardinality, "의미": note}
+            for src, dst, cardinality, note in RELATIONAL_EDGES
+        ]
+    )
+    st.dataframe(edge_df, width="stretch", hide_index=True)
 
 
 def render_transcript(interview: dict) -> None:
@@ -645,6 +757,32 @@ def main() -> None:
         st.subheader("인터뷰 목록")
         st.caption("현재 필터 기준으로 인터뷰 메타데이터를 빠르게 훑어볼 수 있습니다.")
         st.dataframe(filtered_summary_df, width="stretch", hide_index=True)
+
+        st.divider()
+        st.markdown("### 📚 이 표는 어떻게 만들어졌을까?")
+        st.markdown(
+            "이 화면은 여러 건의 상담 인터뷰 원본 데이터에서 **필요한 필드만 뽑아 한 줄씩 요약**한 결과입니다. "
+            "아래 순서대로 따라가면, 데이터가 어떻게 구조화되어 있는지 한 번에 이해할 수 있어요."
+        )
+
+        render_summary_column_dictionary(filtered_summary_df)
+
+        st.divider()
+        render_relational_schema()
+
+        st.divider()
+        render_erd_diagram()
+
+        st.divider()
+        st.markdown("#### 🎯 정리하면")
+        st.markdown(
+            """
+            1. 원본 데이터는 JSON 한 파일 안에 **인터뷰, 학생, 상담사, 발화, 태그**가 섞여 있습니다.
+            2. 이를 데이터베이스 관점에서 보면 **5개 테이블**로 나눌 수 있고, 각각 PK/FK로 연결됩니다.
+            3. 지금 보시는 목록은 그중 **Interview + Client** 정보를 조인(JOIN)한 뒤 필요한 컬럼만 뽑은 결과예요.
+            4. 다른 탭(대화 보기, 직무 추천 분석)은 **Utterance 테이블**을 활용하는 예시입니다.
+            """
+        )
 
     with tab2:
         st.subheader("대화 상세")
